@@ -140,6 +140,21 @@ func TestSmoke(t *testing.T) {
 		}
 	})
 
+	t.Run("broker health", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.BrokerHostURL()+"/health", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("broker health: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			t.Fatalf("broker health status %d", resp.StatusCode)
+		}
+	})
+
 	t.Run("register repo and run a manual pipeline", func(t *testing.T) {
 		const yaml = "steps:\n  - name: hello\n    image: alpine:3\n    commands:\n      - echo hello-from-e2e\n"
 		if _, err := h.CommitFile("main", ".woodpecker.yaml", yaml, "smoke: trivial pipeline"); err != nil {
