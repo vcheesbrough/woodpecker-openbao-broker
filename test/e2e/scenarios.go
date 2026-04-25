@@ -20,11 +20,12 @@ package e2e
 type Trigger string
 
 const (
-	TriggerPush        Trigger = "push"
-	TriggerBranchPush  Trigger = "branch_push"
-	TriggerPullRequest Trigger = "pull_request"
-	TriggerTag         Trigger = "tag"
-	TriggerManual      Trigger = "manual"
+	TriggerPush        Trigger = "push"         // manual API trigger; event=manual in pipeline
+	TriggerBranchPush  Trigger = "branch_push"  // manual API trigger on BranchName; tests {{.Pipeline.Branch}}
+	TriggerPushWebhook Trigger = "push_webhook" // real Gitea push; event=push in pipeline
+	TriggerPullRequest Trigger = "pull_request" // real Gitea PR; event=pull_request in pipeline
+	TriggerTag         Trigger = "tag"          // real Gitea tag; event=tag in pipeline
+	TriggerManual      Trigger = "manual"       // manual API trigger (same impl as TriggerPush)
 )
 
 // Scenario captures one row from the test matrix in bored card #118.
@@ -110,12 +111,14 @@ func AllScenarios() []Scenario {
 		{
 			ID: "s06", Title: "ForgeID-keyed",
 			Templates: []string{"forge/{{.Repo.ForgeID}}"},
-			// Seed path is filled in by the harness once Gitea is registered as
-			// a forge in Woodpecker (forge ID is assigned then).
+			// "{{forge_id}}" in the seed path is substituted at runtime with
+			// the Gitea repo's numeric ID (= Woodpecker's Repo.ForgeID).
+			Seeds: map[string]map[string]string{
+				"forge/{{forge_id}}": {"forge_only": "<<forge_only>>"},
+			},
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"forge_only": "<<forge_only>>"},
 			Description: "forge keys delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s07", Title: "Branch-keyed",
@@ -127,7 +130,6 @@ func AllScenarios() []Scenario {
 			BranchName:  "feature/x",
 			Expect:      map[string]string{"branch_only": "<<branch_only>>"},
 			Description: "branch-specific keys delivered, base branch keys absent",
-			Disabled:    true,
 		},
 		{
 			ID: "s08", Title: "Event-keyed (push)",
@@ -135,10 +137,9 @@ func AllScenarios() []Scenario {
 			Seeds: map[string]map[string]string{
 				"event/push": {"event_only": "<<event_push>>"},
 			},
-			Trigger:     TriggerPush,
+			Trigger:     TriggerPushWebhook,
 			Expect:      map[string]string{"event_only": "<<event_push>>"},
-			Description: "push bucket delivered",
-			Disabled:    true, // TriggerPipeline API gives event=manual; needs real Gitea webhook push
+			Description: "push bucket delivered via real Gitea webhook (event=push)",
 		},
 		{
 			ID: "s09", Title: "Event-keyed (pull_request)",
@@ -149,8 +150,7 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPullRequest,
 			BranchName:  "pr-branch",
 			Expect:      map[string]string{"event_only": "<<event_pr>>"},
-			Description: "pull_request bucket delivered",
-			Disabled:    true,
+			Description: "pull_request bucket delivered via Gitea PR webhook",
 		},
 		{
 			ID: "s10", Title: "Event-keyed (tag)",
@@ -161,8 +161,7 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerTag,
 			BranchName:  "v0.0.1-e2e",
 			Expect:      map[string]string{"event_only": "<<event_tag>>"},
-			Description: "tag bucket delivered",
-			Disabled:    true,
+			Description: "tag bucket delivered via Gitea tag webhook",
 		},
 		{
 			ID: "s11", Title: "Event-keyed (manual)",
@@ -221,7 +220,6 @@ func AllScenarios() []Scenario {
 			BranchName:  "feature/y",
 			Expect:      map[string]string{"shared": "<<branch>>"},
 			Description: "branch > repo > global",
-			Disabled:    true,
 		},
 		{
 			ID: "s15", Title: "Missing path tolerated",
