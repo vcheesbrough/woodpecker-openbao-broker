@@ -92,7 +92,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"owner_only": "<<owner_only>>"},
 			Description: "owner keys delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s05", Title: "Name-keyed",
@@ -103,7 +102,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"name_only": "<<name_only>>"},
 			Description: "name keys delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s06", Title: "ForgeID-keyed",
@@ -136,7 +134,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"event_only": "<<event_push>>"},
 			Description: "push bucket delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s09", Title: "Event-keyed (pull_request)",
@@ -229,7 +226,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{},
 			Description: "pipeline succeeds, no error",
-			Disabled:    true,
 		},
 		{
 			ID: "s16", Title: "403 path tolerated",
@@ -240,7 +236,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{},
 			Description: "pipeline succeeds, no error (broker uses narrower policy that omits forbidden/*)",
-			Disabled:    true,
 		},
 		{
 			ID: "s17", Title: "Bad field name",
@@ -248,7 +243,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{},
 			Description: "broker returns 400; combined.go fail-soft means pipeline still runs with zero extension secrets — assertion is broker-log + zero received",
-			Disabled:    true,
 		},
 		{
 			ID: "s18", Title: "Multi-line vs comma form",
@@ -274,7 +268,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"registry_user": "<<reg_user>>"},
 			Description: "step env var via from_secret echoes correct value through receiver",
-			Disabled:    true,
 		},
 		{
 			ID: "s20", Title: "Native + extension coexist",
