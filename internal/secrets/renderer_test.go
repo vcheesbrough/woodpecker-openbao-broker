@@ -49,6 +49,35 @@ func TestRenderer_RendersAllPaths(t *testing.T) {
 	}
 }
 
+func TestRenderer_AcceptsNewlineSeparator(t *testing.T) {
+	spec := "\n  woodpecker/global  \n\nwoodpecker/repos/{{.Repo.FullName}}\n"
+	r, err := NewRenderer(spec)
+	if err != nil {
+		t.Fatalf("NewRenderer: %v", err)
+	}
+	got := r.Specs()
+	want := []string{"woodpecker/global", "woodpecker/repos/{{.Repo.FullName}}"}
+	if len(got) != len(want) {
+		t.Fatalf("specs: want %v, got %v", want, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("specs[%d]: want %q, got %q", i, want[i], got[i])
+		}
+	}
+}
+
+func TestRenderer_AcceptsMixedCommaAndNewlineSeparators(t *testing.T) {
+	spec := "shared/global\nwoodpecker/global,woodpecker/repos/{{.Repo.FullName}}"
+	r, err := NewRenderer(spec)
+	if err != nil {
+		t.Fatalf("NewRenderer: %v", err)
+	}
+	if got := len(r.Specs()); got != 3 {
+		t.Fatalf("specs: want 3, got %d", got)
+	}
+}
+
 func TestRenderer_UnknownFieldErrors(t *testing.T) {
 	r, err := NewRenderer("woodpecker/{{.NotAField}}")
 	if err != nil {

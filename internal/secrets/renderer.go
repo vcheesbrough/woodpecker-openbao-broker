@@ -27,13 +27,18 @@ type Renderer struct {
 	tmpls []*template.Template
 }
 
-// NewRenderer parses a comma-separated list of path templates. Empty fields
-// (e.g. trailing comma) are skipped silently. An empty spec yields a renderer
-// that produces zero paths, which is valid — the broker will just never
-// merge anything in.
+// NewRenderer parses a list of path templates. Entries may be separated by
+// commas, newlines, or both — whichever reads better in the deployment
+// format (compose `${VAR}` strings tend to be comma-separated; YAML literal
+// blocks are easier multi-line). Empty fields are skipped silently. An empty
+// spec yields a renderer that produces zero paths, which is valid — the
+// broker will just never merge anything in.
 func NewRenderer(spec string) (*Renderer, error) {
 	r := &Renderer{}
-	for i, p := range strings.Split(spec, ",") {
+	fields := strings.FieldsFunc(spec, func(c rune) bool {
+		return c == ',' || c == '\n' || c == '\r'
+	})
+	for i, p := range fields {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
