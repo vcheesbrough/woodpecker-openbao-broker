@@ -37,6 +37,10 @@ type woodpeckerState struct {
 	// bootstrap. Use this for any authenticated Woodpecker API call from
 	// the harness.
 	sessionClient *http.Client
+	// csrfToken is the JWT Woodpecker expects in X-CSRF-TOKEN on every
+	// non-GET API request when authenticated by session cookie. Fetched
+	// from /web-config.js after OAuth bootstrap.
+	csrfToken string
 }
 
 func (h *Harness) startWoodpecker(ctx context.Context) error {
@@ -196,6 +200,10 @@ func (h *Harness) WoodpeckerInternalURL() string { return h.woodpecker.internalH
 // authenticated calls against the Woodpecker API. nil until
 // bootstrapWoodpeckerOAuth has run.
 func (h *Harness) WoodpeckerSession() *http.Client { return h.woodpecker.sessionClient }
+
+// WoodpeckerCSRFToken returns the JWT to set as X-CSRF-TOKEN on
+// non-GET Woodpecker API requests. Empty until OAuth bootstrap.
+func (h *Harness) WoodpeckerCSRFToken() string { return h.woodpecker.csrfToken }
 
 func randomToken(n int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

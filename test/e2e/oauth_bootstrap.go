@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -37,8 +38,44 @@ func (h *Harness) bootstrapWoodpeckerOAuth(ctx context.Context) error {
 		return fmt.Errorf("woodpecker authorize: %w", err)
 	}
 
+	csrf, err := fetchWoodpeckerCSRF(ctx, client, h.woodpecker.internalHTTPURL)
+	if err != nil {
+		return fmt.Errorf("fetch csrf: %w", err)
+	}
+
 	h.woodpecker.sessionClient = client
+	h.woodpecker.csrfToken = csrf
 	return nil
+}
+
+var csrfPattern = regexp.MustCompile(`window\.WOODPECKER_CSRF\s*=\s*"([^"]*)"`)
+
+// fetchWoodpeckerCSRF retrieves the per-session CSRF JWT that Woodpecker
+// injects into /web-config.js. The token is signed with the user's hash
+// (server-side state) so the harness can't mint it itself; it must be
+// fetched via the bootstrapped session cookie.
+func fetchWoodpeckerCSRF(ctx context.Context, client *http.Client, wpBase string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wpBase+"/web-config.js", nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("/web-config.js status %d: %s", resp.StatusCode, snippet(body))
+	}
+	m := csrfPattern.FindStringSubmatch(string(body))
+	if len(m) < 2 || m[1] == "" {
+		return "", fmt.Errorf("WOODPECKER_CSRF not found in /web-config.js: %s", snippet(body))
+	}
+	return m[1], nil
 }
 
 func (h *Harness) newRewritingHTTPClient() (*http.Client, error) {
