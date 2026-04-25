@@ -70,6 +70,7 @@ type Harness struct {
 	bao        *baoState
 	gitea      *giteaState
 	woodpecker *woodpeckerState
+	broker     *brokerState
 	receiver   *receiverState
 }
 
@@ -125,8 +126,11 @@ func (h *Harness) Setup(ctx context.Context, t *testing.T) {
 	if err := h.bootstrapWoodpeckerOAuth(ctx); err != nil {
 		t.Fatalf("woodpecker oauth bootstrap: %v", err)
 	}
-	// Broker bringup, repo registration, and the scenario driver remain
-	// in follow-up PRs — see the package doc comment in scenarios.go.
+	if err := h.startBroker(ctx); err != nil {
+		t.Fatalf("broker: %v", err)
+	}
+	// The 20-scenario driver remains in a follow-up PR — see the package
+	// doc comment in scenarios.go.
 }
 
 func (h *Harness) Teardown(ctx context.Context, t *testing.T) {
