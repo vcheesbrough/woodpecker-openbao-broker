@@ -1,0 +1,39 @@
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      broker_image:
+        description: "Broker image to test (default: build from working tree)"
+        required: false
+        default: ""
+      woodpecker_version:
+        description: "Woodpecker server/agent tag"
+        required: false
+        default: "v3.14.0-rc.1"
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run e2e harness
+        env:
+          BROKER_IMAGE: ${{ github.event.inputs.broker_image }}
+          WOODPECKER_IMAGE: woodpeckerci/woodpecker-server:${{ github.event.inputs.woodpecker_version }}
+          WOODPECKER_AGENT_IMAGE: woodpeckerci/woodpecker-agent:${{ github.event.inputs.woodpecker_version }}
+        run: go test -tags=e2e -timeout 15m -v ./test/e2e/...
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts-${{ github.run_id }}
+          path: test/e2e/_artifacts/
+          if-no-files-found: ignore

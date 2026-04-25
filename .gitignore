@@ -20,6 +20,9 @@ go.work.sum
 /dist/
 /bin/
 
+# E2E harness run artefacts
+test/e2e/_artifacts/
+
 # Editor / OS
 .idea/
 .vscode/

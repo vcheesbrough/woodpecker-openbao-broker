@@ -1,0 +1,33 @@
+# Pipeline used by the e2e Gitea test repo.
+#
+# This file is committed to the repo per scenario by the harness; for each
+# `from_secret` reference the harness picks the secret names that scenario's
+# expectation depends on. The pipeline writes each consumed secret to a file
+# under $CI_WORKSPACE/.secrets/, then `curl --data-binary @file` posts it to
+# the receiver on the e2e docker network. Secret values never hit stdout.
+#
+# This file is a template — `{{.SecretNames}}` etc. are filled in by the
+# harness before commit.
+when:
+  - event: [push, pull_request, tag, manual]
+
+steps:
+  - name: receive
+    image: alpine:3
+    commands:
+      - apk add --quiet curl
+      - mkdir -p "$CI_WORKSPACE/.secrets"
+      - |
+        for n in {{.SecretNames}}; do
+          v="$(printenv "SECRET_$n" || true)"
+          if [ -n "$v" ]; then
+            f="$CI_WORKSPACE/.secrets/$n"
+            printf '%s' "$v" > "$f"
+            curl -sS --data-binary @"$f" "http://e2e-receiver:9000/scenarios/{{.ScenarioID}}/$n" || true
+          fi
+        done
+    environment:
+{{- range .SecretNames }}
+      SECRET_{{.}}:
+        from_secret: {{.}}
+{{- end }}

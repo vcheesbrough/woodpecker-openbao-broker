@@ -177,6 +177,15 @@ golangci-lint run
 CI runs all three on every PR. Integration tests skip when `BAO_ADDR` is
 unset, so a plain `go test ./...` works on a fresh checkout.
 
+```sh
+# end-to-end harness — requires Docker; build-tagged so default test runs
+# are unaffected. Bored card #118; full bringup layered in over follow-ups.
+go test -tags=e2e -timeout 15m ./test/e2e/...
+```
+
+Also wired to the `e2e.yml` `workflow_dispatch` workflow for on-demand
+release verification.
+
 ---
 
 ## License
