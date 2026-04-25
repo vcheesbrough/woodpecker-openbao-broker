@@ -9,24 +9,22 @@ import (
 )
 
 // TestSmoke is the foundation-level integration test: it stands up the
-// docker network, the receiver image, and OpenBao (with AppRole + KV-v2
-// configured), exercises the harness's KV write/read/list helpers, and
+// docker network, the receiver image, OpenBao (with AppRole + KV-v2
+// configured), and Gitea (with admin user + token + e2e/broker-target
+// repo provisioned), exercises the harness's KV and Gitea helpers, and
 // verifies the cleanup ledger leaves nothing behind.
 //
-// Anything beyond this — Gitea, Woodpecker, broker, the 20-scenario
-// matrix — is intentionally not wired up in this PR. See scenarios.go
-// Anything beyond this — Gitea, Woodpecker, broker, the 20-scenario
-// matrix — is intentionally not wired up in this PR. See scenarios.go
-// package doc for the layered rollout.
-// follow-up layers.
+// Anything beyond this — Woodpecker, broker, the 20-scenario matrix —
+// is intentionally not wired up in this PR. See scenarios.go package
+// doc and the plan file for the layered rollout.
 func TestSmoke(t *testing.T) {
 	cfg := ConfigFromEnv()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	h := New(t, cfg)
+	defer h.Teardown(ctx, t) // registered before Setup so partial bringup still cleans up
 	h.Setup(ctx, t)
-	defer h.Teardown(ctx, t)
 
 	t.Run("kv write/read/list round-trip", func(t *testing.T) {
 		path := "woodpecker/smoke/" + h.runID
@@ -47,9 +45,6 @@ func TestSmoke(t *testing.T) {
 	})
 
 	t.Run("receiver round-trip", func(t *testing.T) {
-		// The receiver is reachable from inside the docker network only
-		// (DNS alias e2e-receiver). For TestSmoke we just verify the host
-		// poll endpoint returns an empty map for an unknown scenario.
 		got, err := h.ReceiverPoll(ctx, "smoke-unknown")
 		if err != nil {
 			t.Fatalf("receiver poll: %v", err)
@@ -58,12 +53,47 @@ func TestSmoke(t *testing.T) {
 			t.Fatalf("expected empty receiver map, got %v", got)
 		}
 	})
+
+	t.Run("gitea commit + read on main", func(t *testing.T) {
+		const path = ".woodpecker.yaml"
+		const want = "# placeholder pipeline\n"
+		if _, err := h.CommitFile("main", path, want, "smoke: seed pipeline"); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		got, err := h.ReadFile("main", path)
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if string(got) != want {
+			t.Fatalf("file contents mismatch: got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("gitea branch + tag + PR", func(t *testing.T) {
+		const branch = "smoke-feature"
+		if err := h.CreateBranch("main", branch); err != nil {
+			t.Fatalf("create branch: %v", err)
+		}
+		if _, err := h.CommitFile(branch, "feature.txt", "hello\n", "smoke: feature commit"); err != nil {
+			t.Fatalf("commit on branch: %v", err)
+		}
+		if err := h.CreateTag("v0.0.0-smoke", "main"); err != nil {
+			t.Fatalf("create tag: %v", err)
+		}
+		idx, err := h.OpenPullRequest(branch, "main", "smoke PR")
+		if err != nil {
+			t.Fatalf("open PR: %v", err)
+		}
+		if idx == 0 {
+			t.Fatalf("expected non-zero PR index")
+		}
+	})
 }
 
 // TestE2E enumerates the full 20-row matrix from card #118 but is skipped
-// until the Gitea/Woodpecker/broker bringup layers land in follow-up PRs.
+// until the Woodpecker/broker bringup layers land in follow-up PRs.
 func TestE2E(t *testing.T) {
-	t.Skip("scaffolding-only PR: Gitea/Woodpecker/broker bringup pending. " +
+	t.Skip("scaffolding-only PR: Woodpecker/broker bringup pending. " +
 		"See scenarios.go package doc and the plan file for the layered rollout.")
 
 	scenarios := AllScenarios()
@@ -72,7 +102,6 @@ func TestE2E(t *testing.T) {
 			if s.Disabled {
 				t.Skipf("disabled in this PR: %s", s.Description)
 			}
-			// Real driver lands in a follow-up.
 		})
 	}
 }
