@@ -1,0 +1,28 @@
+# Automated PR review agent.
+# See https://github.com/vcheesbrough/claude-pr-agent for details.
+
+when:
+  - event: pull_request
+
+steps:
+  review:
+    image: registry.desync.link/claude-pr-agent:a5f5173@sha256:97e13f72d738545c48cdd5c1caeda2a5aaaa0059870412aefae06d017242c601
+    pull: true
+    environment:
+      # Git 2.35+ rejects directories owned by a different user than the
+      # running process. The clone step and review container run as different
+      # UIDs on the same shared workspace volume, triggering the check.
+      # These three vars configure git (via env) to trust any directory,
+      # bypassing the ownership check without touching ~/.gitconfig.
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: "*"
+      CLAUDE_TIMEOUT: 600
+      CLAUDE_CODE_OAUTH_TOKEN:
+        from_secret: claude_oauth_token
+      PR_REVIEWER_GH_APP_ID:
+        from_secret: pr_reviewer_gh_app_id
+      PR_REVIEWER_GH_APP_INSTALLATION_ID:
+        from_secret: pr_reviewer_gh_app_installation_id
+      PR_REVIEWER_GH_APP_PRIVATE_KEY_B64:
+        from_secret: pr_reviewer_gh_app_private_key_b64
