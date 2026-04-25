@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
 	"time"
 
 	gitea "code.gitea.io/sdk/gitea"
@@ -31,6 +32,11 @@ type woodpeckerState struct {
 	oauthClientID     string
 	oauthClientSecret string
 	agentSecret       string
+
+	// sessionClient carries the user_sess cookie minted during OAuth
+	// bootstrap. Use this for any authenticated Woodpecker API call from
+	// the harness.
+	sessionClient *http.Client
 }
 
 func (h *Harness) startWoodpecker(ctx context.Context) error {
@@ -180,6 +186,16 @@ func startWoodpeckerAgent(ctx context.Context, h *Harness, agentSecret string) (
 // WoodpeckerHostURL is the host-reachable Woodpecker URL (for harness-side
 // HTTP calls like /healthz).
 func (h *Harness) WoodpeckerHostURL() string { return h.woodpecker.hostHTTPURL }
+
+// WoodpeckerInternalURL is the docker-network URL — use it as the base
+// for any HTTP request made via WoodpeckerSession. Aliases there are
+// resolved by the rewriting client's DialContext.
+func (h *Harness) WoodpeckerInternalURL() string { return h.woodpecker.internalHTTPURL }
+
+// WoodpeckerSession is the OAuth-bootstrapped HTTP client for making
+// authenticated calls against the Woodpecker API. nil until
+// bootstrapWoodpeckerOAuth has run.
+func (h *Harness) WoodpeckerSession() *http.Client { return h.woodpecker.sessionClient }
 
 func randomToken(n int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
