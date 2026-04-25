@@ -257,7 +257,7 @@ func (h *Harness) OpenPullRequest(headBranch, baseBranch, title string) (int64, 
 
 // DeleteBranch removes a branch from the test repo. Ignores not-found errors.
 func (h *Harness) DeleteBranch(name string) error {
-	_, err := h.gitea.client.DeleteBranch(giteaTestOrg, giteaTestRepo, name)
+	_, err := h.gitea.client.DeleteRepoBranch(giteaTestOrg, giteaTestRepo, name)
 	return err
 }
 
