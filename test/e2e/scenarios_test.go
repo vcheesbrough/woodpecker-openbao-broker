@@ -15,7 +15,9 @@ import (
 //
 // Anything beyond this — Gitea, Woodpecker, broker, the 20-scenario
 // matrix — is intentionally not wired up in this PR. See scenarios.go
-// package doc and the plan in /home/vincent/.claude/plans/ for the
+// Anything beyond this — Gitea, Woodpecker, broker, the 20-scenario
+// matrix — is intentionally not wired up in this PR. See scenarios.go
+// package doc for the layered rollout.
 // follow-up layers.
 func TestSmoke(t *testing.T) {
 	cfg := ConfigFromEnv()
