@@ -191,6 +191,76 @@ func (h *Harness) dumpPipelineLog(ctx context.Context, repoID, number int64) str
 	return string(body)
 }
 
+type pipelineSummary struct {
+	Number int64  `json:"number"`
+	Event  string `json:"event"`
+}
+
+// listRecentPipelines returns up to limit pipelines newest-first.
+func (h *Harness) listRecentPipelines(ctx context.Context, repoID int64, limit int) ([]pipelineSummary, error) {
+	url := fmt.Sprintf("%s/api/repos/%d/pipelines?page=1&limit=%d", h.woodpecker.internalHTTPURL, repoID, limit)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := h.woodpecker.sessionClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("list pipelines status %d: %s", resp.StatusCode, snippet(body))
+	}
+	var out []pipelineSummary
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("decode pipeline list: %w body=%s", err, snippet(body))
+	}
+	return out, nil
+}
+
+// latestPipelineNumber returns the number of the most recently created
+// pipeline, or 0 if none exist yet.
+func (h *Harness) latestPipelineNumber(ctx context.Context, repoID int64) (int64, error) {
+	ps, err := h.listRecentPipelines(ctx, repoID, 1)
+	if err != nil {
+		return 0, err
+	}
+	if len(ps) == 0 {
+		return 0, nil
+	}
+	return ps[0].Number, nil
+}
+
+// waitForPipelineAfter polls until a pipeline appears with number > afterNum
+// and (if wantEvent is non-empty) the matching event type. Pipelines with
+// number > afterNum but wrong event advance the baseline so they are skipped.
+func (h *Harness) waitForPipelineAfter(ctx context.Context, repoID, afterNum int64, wantEvent string, timeout time.Duration) (int64, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		ps, err := h.listRecentPipelines(ctx, repoID, 20)
+		if err != nil {
+			return 0, err
+		}
+		for _, p := range ps {
+			if p.Number <= afterNum {
+				break
+			}
+			if wantEvent == "" || p.Event == wantEvent {
+				return p.Number, nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return 0, fmt.Errorf("timeout waiting for pipeline event=%q after #%d", wantEvent, afterNum)
+		}
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 // CreateNativeSecret creates a repo-level secret in Woodpecker that applies
 // to all event types. Used by s20 to verify extension secrets take precedence.
 func (h *Harness) CreateNativeSecret(ctx context.Context, repoID int64, name, value string) error {

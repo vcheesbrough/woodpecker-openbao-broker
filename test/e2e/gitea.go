@@ -255,6 +255,28 @@ func (h *Harness) OpenPullRequest(headBranch, baseBranch, title string) (int64, 
 	return pr.Index, nil
 }
 
+// DeleteBranch removes a branch from the test repo. Ignores not-found errors.
+func (h *Harness) DeleteBranch(name string) error {
+	_, err := h.gitea.client.DeleteBranch(giteaTestOrg, giteaTestRepo, name)
+	return err
+}
+
+// DeleteTag removes a tag from the test repo. Ignores not-found errors.
+func (h *Harness) DeleteTag(name string) error {
+	_, err := h.gitea.client.DeleteTag(giteaTestOrg, giteaTestRepo, name)
+	return err
+}
+
+// giteaTestRepoID returns the Gitea numeric ID of the e2e test repo.
+// This equals Woodpecker's Repo.ForgeID for the registered repo.
+func (h *Harness) giteaTestRepoID() (int64, error) {
+	repo, _, err := h.gitea.client.GetRepo(giteaTestOrg, giteaTestRepo)
+	if err != nil {
+		return 0, err
+	}
+	return repo.ID, nil
+}
+
 // GiteaInternalURL returns the URL Woodpecker should use to reach Gitea
 // over the e2e docker network.
 func (h *Harness) GiteaInternalURL() string {

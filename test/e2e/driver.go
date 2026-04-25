@@ -73,18 +73,31 @@ func realiseScenario(s Scenario, runID string) scenarioRun {
 }
 
 // runScenario drives a single scenario end-to-end: clears KV, seeds it,
-// commits a generated pipeline yaml on a fresh branch (which fires the
-// Gitea webhook into Woodpecker), polls the resulting pipeline, then
-// asserts the receiver collected the expected secrets.
+// triggers a pipeline (method depends on Trigger type), polls until
+// terminal, and asserts the receiver collected the expected secrets.
 func (h *Harness) runScenario(ctx context.Context, t *testing.T, repoID int64, run scenarioRun) {
 	t.Helper()
 
 	if err := h.ClearKVTree(ctx, "woodpecker"); err != nil {
 		t.Fatalf("clear kv: %v", err)
 	}
+
+	// Resolve {{forge_id}} in seed paths to the Gitea repo's numeric ID.
+	forgeID := int64(0)
+	for path := range run.seeds {
+		if strings.Contains(path, "{{forge_id}}") {
+			var err error
+			forgeID, err = h.giteaTestRepoID()
+			if err != nil {
+				t.Fatalf("forge id: %v", err)
+			}
+			break
+		}
+	}
 	for path, kv := range run.seeds {
-		if err := h.WriteKV(ctx, path, kv); err != nil {
-			t.Fatalf("seed %s: %v", path, err)
+		realPath := strings.ReplaceAll(path, "{{forge_id}}", fmt.Sprintf("%d", forgeID))
+		if err := h.WriteKV(ctx, realPath, kv); err != nil {
+			t.Fatalf("seed %s: %v", realPath, err)
 		}
 	}
 
@@ -99,17 +112,8 @@ func (h *Harness) runScenario(ctx context.Context, t *testing.T, repoID int64, r
 	}
 
 	yaml := generatePipelineYAML(run)
-	if err := h.CreateBranch("main", run.branch); err != nil {
-		t.Fatalf("create branch: %v", err)
-	}
-	if _, err := h.CommitFile(run.branch, run.yamlPath, yaml, "scenario "+run.scenario.ID); err != nil {
-		t.Fatalf("commit yaml: %v", err)
-	}
+	number := h.triggerScenarioPipeline(ctx, t, repoID, run, yaml)
 
-	number, err := h.TriggerPipeline(ctx, repoID, run.branch)
-	if err != nil {
-		t.Fatalf("trigger: %v", err)
-	}
 	status, err := h.PollPipeline(ctx, repoID, number, 90*time.Second)
 	if err != nil {
 		t.Fatalf("poll: %v (last status %q)", err, status)
@@ -127,6 +131,117 @@ func (h *Harness) runScenario(ctx context.Context, t *testing.T, repoID int64, r
 	}
 	if !sameMap(got, run.expect) {
 		t.Fatalf("received %v, want %v", redactValues(got), redactValues(run.expect))
+	}
+}
+
+// triggerScenarioPipeline creates the pipeline for run and returns its number.
+// The mechanism depends on the scenario's Trigger type.
+func (h *Harness) triggerScenarioPipeline(ctx context.Context, t *testing.T, repoID int64, run scenarioRun, yaml string) int64 {
+	t.Helper()
+	commit := func(branch string) {
+		if _, err := h.CommitFile(branch, run.yamlPath, yaml, "scenario "+run.scenario.ID); err != nil {
+			t.Fatalf("commit yaml to %s: %v", branch, err)
+		}
+	}
+	createBranch := func(branch string) {
+		if err := h.CreateBranch("main", branch); err != nil {
+			t.Fatalf("create branch %s: %v", branch, err)
+		}
+	}
+
+	switch run.scenario.Trigger {
+	case TriggerPush, TriggerManual:
+		createBranch(run.branch)
+		commit(run.branch)
+		n, err := h.TriggerPipeline(ctx, repoID, run.branch)
+		if err != nil {
+			t.Fatalf("trigger pipeline: %v", err)
+		}
+		return n
+
+	case TriggerBranchPush:
+		// Use the fixed BranchName so {{.Pipeline.Branch}} resolves correctly;
+		// trigger manually (event=manual is fine — the template doesn't use event).
+		branch := run.scenario.BranchName
+		_ = h.DeleteBranch(branch) // no-op if absent
+		createBranch(branch)
+		commit(branch)
+		t.Cleanup(func() { _ = h.DeleteBranch(branch) })
+		n, err := h.TriggerPipeline(ctx, repoID, branch)
+		if err != nil {
+			t.Fatalf("trigger pipeline on %s: %v", branch, err)
+		}
+		return n
+
+	case TriggerPushWebhook:
+		// Rely on the Gitea push webhook that fires when CommitFile is called.
+		createBranch(run.branch)
+		lastNum, err := h.latestPipelineNumber(ctx, repoID)
+		if err != nil {
+			t.Fatalf("latest pipeline number: %v", err)
+		}
+		commit(run.branch)
+		n, err := h.waitForPipelineAfter(ctx, repoID, lastNum, "push", 30*time.Second)
+		if err != nil {
+			t.Fatalf("wait for push pipeline: %v", err)
+		}
+		return n
+
+	case TriggerPullRequest:
+		// Commit the YAML (fires a push webhook), then open a PR (fires a
+		// pull_request webhook). Capture the push pipeline number first so
+		// waitForPipelineAfter skips it.
+		createBranch(run.branch)
+		beforeCommit, err := h.latestPipelineNumber(ctx, repoID)
+		if err != nil {
+			t.Fatalf("latest pipeline number: %v", err)
+		}
+		commit(run.branch)
+		// Wait for the push pipeline so we have a clean baseline.
+		afterPush, _ := h.waitForPipelineAfter(ctx, repoID, beforeCommit, "push", 15*time.Second)
+		if afterPush == 0 {
+			afterPush = beforeCommit
+		}
+		if _, err := h.OpenPullRequest(run.branch, "main", "scenario "+run.scenario.ID); err != nil {
+			t.Fatalf("open PR: %v", err)
+		}
+		n, err := h.waitForPipelineAfter(ctx, repoID, afterPush, "pull_request", 30*time.Second)
+		if err != nil {
+			t.Fatalf("wait for PR pipeline: %v", err)
+		}
+		return n
+
+	case TriggerTag:
+		// Commit the YAML (fires push webhook), create a tag (fires tag
+		// webhook). BranchName holds the tag name; falls back to a run-scoped name.
+		tagName := run.scenario.BranchName
+		if tagName == "" {
+			tagName = "e2e-tag-" + run.branch
+		}
+		createBranch(run.branch)
+		beforeCommit, err := h.latestPipelineNumber(ctx, repoID)
+		if err != nil {
+			t.Fatalf("latest pipeline number: %v", err)
+		}
+		commit(run.branch)
+		afterPush, _ := h.waitForPipelineAfter(ctx, repoID, beforeCommit, "push", 15*time.Second)
+		if afterPush == 0 {
+			afterPush = beforeCommit
+		}
+		_ = h.DeleteTag(tagName)
+		if err := h.CreateTag(tagName, run.branch); err != nil {
+			t.Fatalf("create tag %s: %v", tagName, err)
+		}
+		t.Cleanup(func() { _ = h.DeleteTag(tagName) })
+		n, err := h.waitForPipelineAfter(ctx, repoID, afterPush, "tag", 30*time.Second)
+		if err != nil {
+			t.Fatalf("wait for tag pipeline: %v", err)
+		}
+		return n
+
+	default:
+		t.Fatalf("unhandled trigger type %q", run.scenario.Trigger)
+		return 0
 	}
 }
 
