@@ -139,6 +139,33 @@ func TestSmoke(t *testing.T) {
 			t.Fatal("expected admin=true on bootstrapped user")
 		}
 	})
+
+	t.Run("register repo and run a manual pipeline", func(t *testing.T) {
+		const yaml = "steps:\n  - name: hello\n    image: alpine:3\n    commands:\n      - echo hello-from-e2e\n"
+		if _, err := h.CommitFile("main", ".woodpecker.yaml", yaml, "smoke: trivial pipeline"); err != nil {
+			t.Fatalf("commit pipeline yaml: %v", err)
+		}
+
+		repoID, err := h.RegisterRepoWithWoodpecker(ctx)
+		if err != nil {
+			t.Fatalf("register repo: %v", err)
+		}
+		t.Logf("woodpecker repo id: %d", repoID)
+
+		number, err := h.TriggerPipeline(ctx, repoID, "main")
+		if err != nil {
+			t.Fatalf("trigger pipeline: %v", err)
+		}
+		t.Logf("triggered pipeline number: %d", number)
+
+		status, err := h.PollPipeline(ctx, repoID, number, 3*time.Minute)
+		if err != nil {
+			t.Fatalf("poll pipeline: %v (last status %s)", err, status)
+		}
+		if status != pipelineStatusSuccess {
+			t.Fatalf("pipeline ended with status %q, want success", status)
+		}
+	})
 }
 
 // TestE2E enumerates the full 20-row matrix from card #118 but is skipped
