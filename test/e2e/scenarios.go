@@ -134,6 +134,7 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"event_only": "<<event_push>>"},
 			Description: "push bucket delivered",
+			Disabled:    true, // TriggerPipeline API gives event=manual; needs real Gitea webhook push
 		},
 		{
 			ID: "s09", Title: "Event-keyed (pull_request)",
@@ -168,7 +169,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerManual,
 			Expect:      map[string]string{"event_only": "<<event_manual>>"},
 			Description: "manual bucket delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s12", Title: "Layered, no conflicts",

@@ -207,7 +207,11 @@ func TestE2E(t *testing.T) {
 			if s.Disabled {
 				t.Skipf("disabled (rollout pending): %s", s.Description)
 			}
-			if s.Trigger != TriggerPush {
+			// TriggerPush and TriggerManual both use TriggerPipeline (POST
+			// /api/repos/{id}/pipelines). That API creates a manual-event
+			// pipeline regardless — event-type-specific scenarios (s08, s09,
+			// s10) need real webhook triggering and stay disabled until then.
+			if s.Trigger != TriggerPush && s.Trigger != TriggerManual {
 				t.Skipf("trigger %q not yet implemented in driver", s.Trigger)
 			}
 			templates := strings.Join(s.Templates, "\n")
