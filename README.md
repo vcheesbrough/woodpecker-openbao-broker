@@ -1,19 +1,22 @@
 # woodpecker-openbao-broker
 
-A small Go HTTP service that bridges [Woodpecker CI](https://woodpecker-ci.org)'s
-external secret-extension API to [OpenBao](https://openbao.org) (also works
-with HashiCorp Vault — the API is wire-compatible). Pipeline secrets live in
-OpenBao at runtime instead of Woodpecker's database; the broker reads them
-on each request and returns them in Woodpecker's secret format.
+Tiny Go service that lets [Woodpecker CI](https://woodpecker-ci.org) fetch
+pipeline secrets from [OpenBao](https://openbao.org) instead of stuffing them
+into its own database. (Vault works too — same wire protocol.)
 
 [![CI](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml/badge.svg)](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml)
 [![GHCR](https://img.shields.io/github/v/release/vcheesbrough/woodpecker-openbao-broker?logo=docker&label=ghcr.io&color=blue)](https://github.com/vcheesbrough/woodpecker-openbao-broker/pkgs/container/woodpecker-openbao-broker)
+
+The shape of it: Woodpecker POSTs a signed request, the broker checks the
+signature, reads from OpenBao, hands the secrets back. Woodpecker injects
+them into your pipeline like they'd always lived there. Your team gets one
+place to manage secrets; you stop copy-pasting tokens into a web form.
 
 ---
 
 ## Quickstart
 
-Run the broker on the same Docker network as your Woodpecker server:
+Spin up the broker next to your Woodpecker server (same Docker network):
 
 ```sh
 docker run --rm -p 8080:8080 \
@@ -26,21 +29,21 @@ docker run --rm -p 8080:8080 \
   ghcr.io/vcheesbrough/woodpecker-openbao-broker:latest
 ```
 
-Get the public-key file from your Woodpecker server first:
+You'll need Woodpecker's public key first — grab it:
 
 ```sh
 curl -fsS -H "Authorization: Bearer $WOODPECKER_TOKEN" \
   https://woodpecker.example.com/api/signature/public-key > pubkey.pem
 ```
 
-Point Woodpecker at the broker:
+Tell Woodpecker the broker exists:
 
 ```sh
 WOODPECKER_SECRET_EXTENSION_ENDPOINT=http://woodpecker-broker:8080/secrets
 ```
 
-Use `from_secret:` in a pipeline as you would for native secrets — the
-broker's response is injected identically:
+Use `from_secret:` exactly like you would for a native secret — Woodpecker
+can't tell the difference:
 
 ```yaml
 steps:
@@ -51,6 +54,8 @@ steps:
       REGISTRY_USER:
         from_secret: registry_user
 ```
+
+That's it.
 
 ---
 
@@ -63,26 +68,26 @@ steps:
 | `OPENBAO_SECRET_ID` | yes | — | AppRole `secret_id` |
 | `OPENBAO_NAMESPACE` | no | — | OpenBao namespace (Enterprise/Vault only) |
 | `OPENBAO_KV_MOUNT` | no | `secret` | KV-v2 mount name |
-| `SECRET_PATH_TEMPLATES` | no | _empty_ | Comma-separated list of [Go templates](https://pkg.go.dev/text/template) rendered per request; see [Path templates](#path-templates) |
-| `WOODPECKER_PUBLIC_KEY_FILE` | one of | — | Path to the Woodpecker server's ed25519 public key (PEM) |
-| `WOODPECKER_URL` | one of | — | Alternative: fetch the public key from this Woodpecker server at startup |
-| `WOODPECKER_TOKEN` | with `WOODPECKER_URL` | — | Token used to fetch the public key |
+| `SECRET_PATH_TEMPLATES` | no | _empty_ | List of [Go templates](https://pkg.go.dev/text/template) rendered per request; see [Path templates](#path-templates) |
+| `WOODPECKER_PUBLIC_KEY_FILE` | one of | — | Path to Woodpecker's ed25519 public key (PEM) |
+| `WOODPECKER_URL` | one of | — | Alternative — fetch the key from this Woodpecker server at startup |
+| `WOODPECKER_TOKEN` | with `WOODPECKER_URL` | — | Token used to fetch the key |
 | `LISTEN_ADDR` | no | `:8080` | Bind address |
 
-Either `WOODPECKER_PUBLIC_KEY_FILE` **or** `WOODPECKER_URL` + `WOODPECKER_TOKEN`
-must be set. The first is preferred for production — it removes a startup
-network dependency on Woodpecker. `OPENBAO_ROLE_ID` and `OPENBAO_SECRET_ID`
-should be the only secrets remaining in Woodpecker's native secret store.
+You need either `WOODPECKER_PUBLIC_KEY_FILE` **or** the `WOODPECKER_URL` +
+`WOODPECKER_TOKEN` pair. The file version is nicer for production — no
+"oops, Woodpecker isn't up yet" surprises at boot. Once you've migrated,
+`OPENBAO_ROLE_ID` and `OPENBAO_SECRET_ID` should be the only two things
+left sitting in Woodpecker's native secret store.
 
 ---
 
 ## Path templates
 
-`SECRET_PATH_TEMPLATES` is a list of Go templates evaluated against the
-inbound Woodpecker request. Entries can be separated by commas, newlines, or
-both — pick whichever reads better in your deployment format. Each rendered
-path is read from KV-v2 and merged into the response; later paths override
-earlier keys.
+`SECRET_PATH_TEMPLATES` is a list of Go templates the broker evaluates
+against each incoming request. Separate entries with commas, newlines, or
+both — whichever reads nicer in your config. Every rendered path is read
+from KV-v2 and merged into the response; later paths win ties.
 
 Available fields:
 
@@ -93,12 +98,12 @@ Available fields:
 - `{{.Pipeline.Branch}}`
 - `{{.Pipeline.Event}}` — `push`, `pull_request`, `tag`, `manual`, …
 
-Missing paths and 403s are skipped silently — empty values are a normal
-outcome, not a pipeline failure.
+Missing paths and 403s get skipped silently. That's by design: a missing
+path is just "no extra secrets here", which is a perfectly fine answer.
 
 ### Examples
 
-**Single global path** — every pipeline gets the same secrets:
+**One shared bucket** — every pipeline gets the same secrets:
 
 ```
 SECRET_PATH_TEMPLATES=woodpecker/global
@@ -111,8 +116,8 @@ SECRET_PATH_TEMPLATES=woodpecker/repos/{{.Repo.FullName}}
 ```
 
 **Layered global → repo → branch** — repo overrides global, branch overrides
-repo. A `staging`/`production` deploy pipeline pattern. In `docker-compose.yml`
-the multi-line form keeps it scannable:
+repo. Handy for `staging`/`production` deploy pipelines. The multi-line form
+in `docker-compose.yml` keeps it scannable:
 
 ```yaml
 environment:
@@ -122,14 +127,14 @@ environment:
     woodpecker/repos/{{.Repo.FullName}}/branches/{{.Pipeline.Branch}}
 ```
 
-Equivalent comma-separated form for shells / `.env` files:
+Same thing comma-separated, for shells and `.env` files:
 
 ```
 SECRET_PATH_TEMPLATES=woodpecker/global,woodpecker/repos/{{.Repo.FullName}},woodpecker/repos/{{.Repo.FullName}}/branches/{{.Pipeline.Branch}}
 ```
 
-A typo in a template field name fails the request rather than silently
-rendering to nothing — `missingkey=error` is set on the parser.
+Typo a field name? The request fails loudly instead of quietly rendering an
+empty path. (`missingkey=error` is on; you're welcome.)
 
 ---
 
@@ -145,30 +150,33 @@ rendering to nothing — `missingkey=error` is set on the parser.
 
 ## Threat model
 
-The broker is a **trusted in-network bridge**: it sees the plaintext value of
-every pipeline secret and authenticates Woodpecker callers with an ed25519
-HTTP message-signature checked on every request (`/secrets`); only `/health`
-is unauthenticated. AppRole credentials live in environment variables on the
-broker host, so the deployment surface is the AppRole policy combined with
-your container runtime's process isolation. **Secret values are never written
-to logs or error messages** — the broker logs paths, key names, and counts
-only. Woodpecker cannot mask external secrets in step logs, so pipeline
-authors must still avoid `echo`-ing values into pipeline output.
+The broker is a trusted in-network bridge: it sees the plaintext value of
+every pipeline secret. Every request to `/secrets` is verified against
+Woodpecker's ed25519 signature; `/health` is the only route that doesn't
+need one. The AppRole credentials live in environment variables on the
+broker host, so your real perimeter is the AppRole policy combined with
+your container runtime's process isolation.
+
+Secret values never appear in logs or error messages — only paths, key
+names, and counts. One thing the broker can't help with: Woodpecker doesn't
+mask external secrets in step logs, so don't `echo $MY_SECRET` in your
+pipeline. The broker can hand the value over carefully; what your pipeline
+does with it is on you.
 
 ---
 
 ## Contributing
 
-Run unit tests against fakes:
+PRs welcome. Three things to run before pushing:
 
 ```sh
+# unit tests, against fakes
 go test ./...
 ```
 
-Run integration tests against a real OpenBao. The simplest local setup is
-[`openbao/devbao`](https://github.com/openbao/devbao):
-
 ```sh
+# integration tests, against a real OpenBao. Easiest local setup
+# is just the container:
 docker run --rm -d --name bao-dev \
   -e BAO_DEV_ROOT_TOKEN_ID=root -p 8200:8200 \
   openbao/openbao:2.5.3
@@ -179,14 +187,14 @@ BAO_KV_MOUNT=secret \
 go test ./...
 ```
 
-Lint:
-
 ```sh
+# lint
 golangci-lint run
 ```
 
-CI runs all three on every PR. Tests gated on `BAO_ADDR` are skipped when
-the variable is unset, so `go test ./...` works on a clean machine.
+CI runs all three on every PR. Integration tests skip themselves when
+`BAO_ADDR` is unset, so a plain `go test ./...` works on a fresh checkout
+with nothing else running.
 
 ---
 
