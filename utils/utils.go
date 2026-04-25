@@ -45,13 +45,13 @@ func getPubKeyFromServer(url, token string) ([]byte, error) {
 }
 
 func getPubKey() ([]byte, error) {
-	woodpeckerServerURL := os.Getenv("EXTENSION_WOODPECKER_URL")
-	woodpeckerToken := os.Getenv("EXTENSION_WOODPECKER_TOKEN")
+	woodpeckerServerURL := os.Getenv("WOODPECKER_URL")
+	woodpeckerToken := os.Getenv("WOODPECKER_TOKEN")
 	if woodpeckerServerURL != "" && woodpeckerToken != "" {
 		return getPubKeyFromServer(woodpeckerServerURL, woodpeckerToken)
 	}
 
-	localFilePath := os.Getenv("EXTENSION_PUBLIC_KEY_FILE")
+	localFilePath := os.Getenv("WOODPECKER_PUBLIC_KEY_FILE")
 	if localFilePath != "" {
 		pubKeyRaw, err := os.ReadFile(localFilePath)
 		if err != nil {
@@ -61,7 +61,7 @@ func getPubKey() ([]byte, error) {
 		return pubKeyRaw, nil
 	}
 
-	return nil, errors.New("EXTENSION_WOODPECKER_URL is not set")
+	return nil, errors.New("set WOODPECKER_PUBLIC_KEY_FILE or WOODPECKER_URL+WOODPECKER_TOKEN")
 }
 
 func GetPubKey() (ed25519.PublicKey, error) {
@@ -71,6 +71,9 @@ func GetPubKey() (ed25519.PublicKey, error) {
 	}
 
 	pemblock, _ := pem.Decode(pubKeyRaw)
+	if pemblock == nil {
+		return nil, errors.New("failed to decode PEM block from public key")
+	}
 
 	b, err := x509.ParsePKIXPublicKey(pemblock.Bytes)
 	if err != nil {
