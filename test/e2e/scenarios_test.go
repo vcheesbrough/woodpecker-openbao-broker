@@ -214,7 +214,11 @@ func TestE2E(t *testing.T) {
 			if s.Trigger != TriggerPush && s.Trigger != TriggerManual {
 				t.Skipf("trigger %q not yet implemented in driver", s.Trigger)
 			}
-			templates := strings.Join(s.Templates, "\n")
+			sep := "\n"
+			if s.JoinWith != "" {
+				sep = s.JoinWith
+			}
+			templates := strings.Join(s.Templates, sep)
 			if err := h.RestartBroker(ctx, templates); err != nil {
 				t.Fatalf("restart broker with templates %q: %v", templates, err)
 			}

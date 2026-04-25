@@ -37,11 +37,15 @@ type Scenario struct {
 	ID          string
 	Title       string
 	Templates   []string
-	Seeds       map[string]map[string]string // path -> {key: value}
-	Trigger     Trigger
-	BranchName  string // for branch_push / pull_request / tag scenarios
-	Expect      map[string]string // expected secret name -> value
-	Description string
+	// JoinWith is the separator used to join Templates into SECRET_PATH_TEMPLATES.
+	// Defaults to "\n". Set to "," to test the comma-separated form.
+	JoinWith      string
+	Seeds         map[string]map[string]string // path -> {key: value}
+	NativeSecrets map[string]string            // Woodpecker-native secret name -> value
+	Trigger       Trigger
+	BranchName    string            // for branch_push / pull_request / tag scenarios
+	Expect        map[string]string // expected secret name -> value
+	Description   string
 
 	// Disable marks scenarios that cannot run until later layers
 	// (Gitea, Woodpecker, broker) are added. Every scenario starts true here
@@ -250,14 +254,14 @@ func AllScenarios() []Scenario {
 				"woodpecker/global",
 				"woodpecker/repos/{{.Repo.FullName}}",
 			},
+			JoinWith: ",",
 			Seeds: map[string]map[string]string{
 				"woodpecker/global":                  {"shared_a": "<<a>>"},
 				"woodpecker/repos/e2e/broker-target": {"shared_b": "<<b>>"},
 			},
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"shared_a": "<<a>>", "shared_b": "<<b>>"},
-			Description: "harness runs the scenario twice, once with comma-joined templates and once newline-joined; identical receiver state required",
-			Disabled:    true,
+			Description: "comma-joined templates; newline form already covered by s12",
 		},
 		{
 			ID: "s19", Title: "from_secret in pipeline",
@@ -275,10 +279,10 @@ func AllScenarios() []Scenario {
 			Seeds: map[string]map[string]string{
 				"woodpecker/repos/e2e/broker-target": {"clash": "<<extension_wins>>"},
 			},
-			Trigger:     TriggerPush,
-			Expect:      map[string]string{"clash": "<<extension_wins>>"},
-			Description: "native Woodpecker secret with same name is overridden by extension per combined.go",
-			Disabled:    true,
+			NativeSecrets: map[string]string{"clash": "<<native_clash>>"},
+			Trigger:       TriggerPush,
+			Expect:        map[string]string{"clash": "<<extension_wins>>"},
+			Description:   "native Woodpecker secret with same name is overridden by extension per combined.go",
 		},
 	}
 }

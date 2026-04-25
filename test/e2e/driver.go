@@ -15,11 +15,12 @@ import (
 // scenarioRun is what the driver materializes from a Scenario at run
 // time: random per-run nonces in place of `<<placeholder>>` strings.
 type scenarioRun struct {
-	scenario Scenario
-	seeds    map[string]map[string]string // path → key → realised value
-	expect   map[string]string            // secret name → realised value
-	branch   string
-	yamlPath string
+	scenario      Scenario
+	seeds         map[string]map[string]string // path → key → realised value
+	nativeSecrets map[string]string            // Woodpecker-native secret name → realised value
+	expect        map[string]string            // secret name → realised value
+	branch        string
+	yamlPath      string
 }
 
 var placeholderRE = regexp.MustCompile(`^<<([^>]+)>>$`)
@@ -51,6 +52,10 @@ func realiseScenario(s Scenario, runID string) scenarioRun {
 		}
 		seeds[path] = out
 	}
+	nativeSecrets := map[string]string{}
+	for k, v := range s.NativeSecrets {
+		nativeSecrets[k] = mapValue(v)
+	}
 	expect := map[string]string{}
 	for k, v := range s.Expect {
 		expect[k] = mapValue(v)
@@ -58,11 +63,12 @@ func realiseScenario(s Scenario, runID string) scenarioRun {
 
 	branch := "scenario/" + s.ID + "-" + randomToken(4)
 	return scenarioRun{
-		scenario: s,
-		seeds:    seeds,
-		expect:   expect,
-		branch:   branch,
-		yamlPath: ".woodpecker.yaml",
+		scenario:      s,
+		seeds:         seeds,
+		nativeSecrets: nativeSecrets,
+		expect:        expect,
+		branch:        branch,
+		yamlPath:      ".woodpecker.yaml",
 	}
 }
 
@@ -80,6 +86,16 @@ func (h *Harness) runScenario(ctx context.Context, t *testing.T, repoID int64, r
 		if err := h.WriteKV(ctx, path, kv); err != nil {
 			t.Fatalf("seed %s: %v", path, err)
 		}
+	}
+
+	for name, value := range run.nativeSecrets {
+		name, value := name, value
+		if err := h.CreateNativeSecret(ctx, repoID, name, value); err != nil {
+			t.Fatalf("create native secret %s: %v", name, err)
+		}
+		t.Cleanup(func() {
+			_ = h.DeleteNativeSecret(context.Background(), repoID, name)
+		})
 	}
 
 	yaml := generatePipelineYAML(run)
