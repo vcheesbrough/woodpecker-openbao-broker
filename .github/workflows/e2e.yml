@@ -11,6 +11,16 @@ on:
         description: "Woodpecker server/agent tag"
         required: false
         default: "v3.14.0-rc.1"
+  workflow_call:
+    inputs:
+      broker_image:
+        type: string
+        required: false
+        default: ""
+      woodpecker_version:
+        type: string
+        required: false
+        default: "v3.14.0-rc.1"
 
 jobs:
   e2e:
@@ -25,9 +35,9 @@ jobs:
 
       - name: Run e2e harness
         env:
-          BROKER_IMAGE: ${{ github.event.inputs.broker_image }}
-          WOODPECKER_IMAGE: woodpeckerci/woodpecker-server:${{ github.event.inputs.woodpecker_version }}
-          WOODPECKER_AGENT_IMAGE: woodpeckerci/woodpecker-agent:${{ github.event.inputs.woodpecker_version }}
+          BROKER_IMAGE: ${{ inputs.broker_image }}
+          WOODPECKER_IMAGE: woodpeckerci/woodpecker-server:${{ inputs.woodpecker_version }}
+          WOODPECKER_AGENT_IMAGE: woodpeckerci/woodpecker-agent:${{ inputs.woodpecker_version }}
         run: go test -tags=e2e -timeout 15m -v ./test/e2e/...
 
       - name: Upload artifacts
