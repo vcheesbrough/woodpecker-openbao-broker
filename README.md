@@ -78,9 +78,11 @@ should be the only secrets remaining in Woodpecker's native secret store.
 
 ## Path templates
 
-`SECRET_PATH_TEMPLATES` is a comma-separated list of Go templates evaluated
-against the inbound Woodpecker request. Each rendered path is read from KV-v2
-and merged into the response; later paths override earlier keys.
+`SECRET_PATH_TEMPLATES` is a list of Go templates evaluated against the
+inbound Woodpecker request. Entries can be separated by commas, newlines, or
+both — pick whichever reads better in your deployment format. Each rendered
+path is read from KV-v2 and merged into the response; later paths override
+earlier keys.
 
 Available fields:
 
@@ -109,7 +111,18 @@ SECRET_PATH_TEMPLATES=woodpecker/repos/{{.Repo.FullName}}
 ```
 
 **Layered global → repo → branch** — repo overrides global, branch overrides
-repo. A `staging`/`production` deploy pipeline pattern:
+repo. A `staging`/`production` deploy pipeline pattern. In `docker-compose.yml`
+the multi-line form keeps it scannable:
+
+```yaml
+environment:
+  SECRET_PATH_TEMPLATES: |
+    woodpecker/global
+    woodpecker/repos/{{.Repo.FullName}}
+    woodpecker/repos/{{.Repo.FullName}}/branches/{{.Pipeline.Branch}}
+```
+
+Equivalent comma-separated form for shells / `.env` files:
 
 ```
 SECRET_PATH_TEMPLATES=woodpecker/global,woodpecker/repos/{{.Repo.FullName}},woodpecker/repos/{{.Repo.FullName}}/branches/{{.Pipeline.Branch}}
