@@ -3,6 +3,7 @@ module github.com/vcheesbrough/woodpecker-openbao-broker
 go 1.25.0
 
 require (
+	code.gitea.io/sdk/gitea v0.22.1
 	github.com/gin-gonic/gin v1.12.0
 	github.com/hashicorp/vault/api v1.23.0
 	github.com/hashicorp/vault/api/auth/approle v0.12.0
@@ -15,6 +16,7 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/42wim/httpsig v1.2.3 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -29,6 +31,7 @@ require (
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
@@ -40,6 +43,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/gdgvda/cron v0.6.0 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
+	github.com/go-fed/httpsig v1.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -58,6 +62,7 @@ require (
 	github.com/hashicorp/go-secure-stdlib/parseutil v0.2.0 // indirect
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect

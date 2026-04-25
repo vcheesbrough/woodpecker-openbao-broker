@@ -68,6 +68,7 @@ type Harness struct {
 	networkName string
 
 	bao      *baoState
+	gitea    *giteaState
 	receiver *receiverState
 }
 
@@ -114,8 +115,11 @@ func (h *Harness) Setup(ctx context.Context, t *testing.T) {
 	if err := h.startOpenBao(ctx); err != nil {
 		t.Fatalf("openbao: %v", err)
 	}
-	// Gitea + Woodpecker + broker bringup is intentionally not wired up in
-	// this scaffolding PR — see the package doc comment in scenarios.go.
+	if err := h.startGitea(ctx); err != nil {
+		t.Fatalf("gitea: %v", err)
+	}
+	// Woodpecker + broker bringup is intentionally not wired up in this
+	// PR — see the package doc comment in scenarios.go.
 }
 
 func (h *Harness) Teardown(ctx context.Context, t *testing.T) {
@@ -123,7 +127,7 @@ func (h *Harness) Teardown(ctx context.Context, t *testing.T) {
 
 	if errs := h.ledger.Cleanup(ctx); len(errs) > 0 {
 		for _, e := range errs {
-			t.Logf("cleanup error: %v", e)
+			t.Errorf("cleanup error: %v", e)
 		}
 	}
 	if err := h.ledger.Verify(ctx); err != nil {
