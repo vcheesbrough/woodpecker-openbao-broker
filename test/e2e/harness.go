@@ -67,9 +67,10 @@ type Harness struct {
 	network     *testcontainers.DockerNetwork
 	networkName string
 
-	bao      *baoState
-	gitea    *giteaState
-	receiver *receiverState
+	bao        *baoState
+	gitea      *giteaState
+	woodpecker *woodpeckerState
+	receiver   *receiverState
 }
 
 func New(t *testing.T, cfg Config) *Harness {
@@ -118,8 +119,11 @@ func (h *Harness) Setup(ctx context.Context, t *testing.T) {
 	if err := h.startGitea(ctx); err != nil {
 		t.Fatalf("gitea: %v", err)
 	}
-	// Woodpecker + broker bringup is intentionally not wired up in this
-	// PR — see the package doc comment in scenarios.go.
+	if err := h.startWoodpecker(ctx); err != nil {
+		t.Fatalf("woodpecker: %v", err)
+	}
+	// Broker bringup + OAuth bootstrap + scenario driver remain in
+	// follow-up PRs — see the package doc comment in scenarios.go.
 }
 
 func (h *Harness) Teardown(ctx context.Context, t *testing.T) {

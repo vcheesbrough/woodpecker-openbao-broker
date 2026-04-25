@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -86,6 +87,21 @@ func TestSmoke(t *testing.T) {
 		}
 		if idx == 0 {
 			t.Fatalf("expected non-zero PR index")
+		}
+	})
+
+	t.Run("woodpecker server healthz", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.WoodpeckerHostURL()+"/healthz", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("woodpecker healthz: %v", err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			t.Fatalf("woodpecker healthz status %d", resp.StatusCode)
 		}
 	})
 }
