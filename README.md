@@ -40,7 +40,13 @@ On the Woodpecker server:
 
 ```sh
 WOODPECKER_SECRET_EXTENSION_ENDPOINT=http://woodpecker-broker:8080/secrets
+WOODPECKER_EXTENSIONS_ALLOWED_HOSTS=woodpecker-broker
 ```
+
+`WOODPECKER_EXTENSIONS_ALLOWED_HOSTS` defaults to public internet hosts only.
+When the broker is on a private or container network, set it to the broker's
+hostname. **Omit the port** — Woodpecker's hostmatcher strips the port before
+pattern matching, so `woodpecker-broker:8080` never matches.
 
 Pipeline usage is identical to native secrets:
 

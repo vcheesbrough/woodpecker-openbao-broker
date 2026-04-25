@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	vault "github.com/hashicorp/vault/api"
@@ -207,6 +208,29 @@ func (h *Harness) DeleteKV(ctx context.Context, path string) error {
 	_, err := h.bao.rootClient.Logical().DeleteWithContext(ctx, openBaoKVMount+"/metadata/"+path)
 	if err != nil {
 		return fmt.Errorf("delete kv %s: %w", path, err)
+	}
+	return nil
+}
+
+// ClearKVTree recursively deletes every secret reachable from the given
+// prefix. Used between scenarios so each starts from a clean slate.
+func (h *Harness) ClearKVTree(ctx context.Context, prefix string) error {
+	prefix = strings.TrimSuffix(prefix, "/")
+	keys, err := h.ListKVUnder(ctx, prefix)
+	if err != nil {
+		return err
+	}
+	for _, k := range keys {
+		full := prefix + "/" + strings.TrimSuffix(k, "/")
+		if strings.HasSuffix(k, "/") {
+			if err := h.ClearKVTree(ctx, full); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := h.DeleteKV(ctx, full); err != nil {
+			return err
+		}
 	}
 	return nil
 }

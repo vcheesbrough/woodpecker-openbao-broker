@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"time"
@@ -140,6 +141,7 @@ func startWoodpeckerServer(ctx context.Context, h *Harness, clientID, clientSecr
 			"WOODPECKER_LOG_LEVEL":                "info",
 			"WOODPECKER_DATABASE_DRIVER":          "sqlite3",
 			"WOODPECKER_SECRET_EXTENSION_ENDPOINT": fmt.Sprintf("http://%s:%s/secrets", brokerNetAlias, brokerHTTPPort),
+			"WOODPECKER_EXTENSIONS_ALLOWED_HOSTS":  brokerNetAlias,
 		},
 		WaitingFor: wait.ForAll(
 			wait.ForListeningPort(woodpeckerHTTPPort+"/tcp"),
@@ -205,6 +207,23 @@ func (h *Harness) WoodpeckerSession() *http.Client { return h.woodpecker.session
 // WoodpeckerCSRFToken returns the JWT to set as X-CSRF-TOKEN on
 // non-GET Woodpecker API requests. Empty until OAuth bootstrap.
 func (h *Harness) WoodpeckerCSRFToken() string { return h.woodpecker.csrfToken }
+
+func (h *Harness) dumpWoodpeckerServerLog(ctx context.Context) string {
+	if h.woodpecker == nil || h.woodpecker.server == nil {
+		return "(no woodpecker)"
+	}
+	rc, err := h.woodpecker.server.Logs(ctx)
+	if err != nil {
+		return fmt.Sprintf("(logs: %v)", err)
+	}
+	defer func() { _ = rc.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(rc, 64<<10))
+	// Tail the last 4K — earliest startup chatter is rarely useful.
+	if len(body) > 4096 {
+		body = body[len(body)-4096:]
+	}
+	return string(body)
+}
 
 func randomToken(n int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

@@ -62,7 +62,6 @@ func AllScenarios() []Scenario {
 			Templates:   nil,
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{},
-			Disabled:    true,
 		},
 		{
 			ID: "s02", Title: "Single global",
@@ -73,7 +72,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"global_only": "<<global_only>>"},
 			Description: "global keys delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s03", Title: "Per-repo (FullName)",
@@ -84,7 +82,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"repo_only": "<<repo_only>>"},
 			Description: "repo keys delivered",
-			Disabled:    true,
 		},
 		{
 			ID: "s04", Title: "Owner-keyed",
@@ -192,7 +189,6 @@ func AllScenarios() []Scenario {
 				"shared_b": "<<repo_b>>",
 			},
 			Description: "union of both",
-			Disabled:    true,
 		},
 		{
 			ID: "s13", Title: "Layered, conflicts",
@@ -207,7 +203,6 @@ func AllScenarios() []Scenario {
 			Trigger:     TriggerPush,
 			Expect:      map[string]string{"shared": "<<repo_wins>>"},
 			Description: "per-repo wins (later paths win)",
-			Disabled:    true,
 		},
 		{
 			ID: "s14", Title: "Layered three-deep",
