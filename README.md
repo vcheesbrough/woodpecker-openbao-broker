@@ -7,6 +7,7 @@ OpenBao at runtime instead of Woodpecker's database; the broker reads them
 on each request and returns them in Woodpecker's secret format.
 
 [![CI](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml/badge.svg)](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml)
+[![GHCR](https://img.shields.io/github/v/release/vcheesbrough/woodpecker-openbao-broker?logo=docker&label=ghcr.io&color=blue)](https://github.com/vcheesbrough/woodpecker-openbao-broker/pkgs/container/woodpecker-openbao-broker)
 
 ---
 
