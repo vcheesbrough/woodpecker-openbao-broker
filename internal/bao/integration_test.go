@@ -48,7 +48,7 @@ func setupClient(t *testing.T) (*bao.Client, *vault.Client) {
 	if err != nil {
 		t.Skipf("OpenBao not reachable at %s: %v", addr, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	return c, api
 }

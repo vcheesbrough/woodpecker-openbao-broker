@@ -29,16 +29,17 @@ func getPubKeyFromServer(url, token string) ([]byte, error) {
 
 	pubKeyResponse, err := client.Get(pubKeyUrl)
 	if err != nil {
-		return nil, errors.New("Failed to get public key file " + err.Error())
+		return nil, fmt.Errorf("get public key: %w", err)
 	}
+	defer func() { _ = pubKeyResponse.Body.Close() }()
 
 	pubKeyRaw, err := io.ReadAll(pubKeyResponse.Body)
 	if err != nil {
-		return nil, errors.New("Failed to read public key file " + err.Error())
+		return nil, fmt.Errorf("read public key body: %w", err)
 	}
 
 	if len(pubKeyRaw) == 0 || string(pubKeyRaw) == "User not authorized" {
-		return nil, errors.New("Failed to get public key file")
+		return nil, errors.New("public key endpoint returned empty or unauthorized")
 	}
 
 	return pubKeyRaw, nil
@@ -55,7 +56,7 @@ func getPubKey() ([]byte, error) {
 	if localFilePath != "" {
 		pubKeyRaw, err := os.ReadFile(localFilePath)
 		if err != nil {
-			return nil, errors.New("Failed to read public key file " + err.Error())
+			return nil, fmt.Errorf("read public key file: %w", err)
 		}
 
 		return pubKeyRaw, nil
@@ -77,12 +78,12 @@ func GetPubKey() (ed25519.PublicKey, error) {
 
 	b, err := x509.ParsePKIXPublicKey(pemblock.Bytes)
 	if err != nil {
-		return nil, errors.New("Failed to parse public key file " + err.Error())
+		return nil, fmt.Errorf("parse public key: %w", err)
 	}
 
 	pubKey, ok := b.(ed25519.PublicKey)
 	if !ok {
-		return nil, errors.New("Failed to parse public key file")
+		return nil, errors.New("public key is not ed25519")
 	}
 
 	return pubKey, nil

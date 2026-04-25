@@ -1,0 +1,14 @@
+.git
+.gitignore
+.github
+.woodpecker
+.env
+.env.example
+.idea
+.vscode
+*.md
+LICENSE
+testdata
+dist
+bin
+broker
