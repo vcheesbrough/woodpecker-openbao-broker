@@ -1,0 +1,33 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/broker
+/woodpecker-openbao-broker
+
+# Test binaries / coverage
+*.test
+*.out
+coverage.*
+
+# Go workspace
+go.work
+go.work.sum
+
+# Build artefacts
+/dist/
+/bin/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local config — never commit
+.env
+.env.local
+*.pem
+!testdata/**/*.pem
