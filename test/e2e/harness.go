@@ -122,8 +122,11 @@ func (h *Harness) Setup(ctx context.Context, t *testing.T) {
 	if err := h.startWoodpecker(ctx); err != nil {
 		t.Fatalf("woodpecker: %v", err)
 	}
-	// Broker bringup + OAuth bootstrap + scenario driver remain in
-	// follow-up PRs — see the package doc comment in scenarios.go.
+	if err := h.bootstrapWoodpeckerOAuth(ctx); err != nil {
+		t.Fatalf("woodpecker oauth bootstrap: %v", err)
+	}
+	// Broker bringup, repo registration, and the scenario driver remain
+	// in follow-up PRs — see the package doc comment in scenarios.go.
 }
 
 func (h *Harness) Teardown(ctx context.Context, t *testing.T) {

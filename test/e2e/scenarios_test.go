@@ -4,6 +4,8 @@ package e2e
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -102,6 +104,39 @@ func TestSmoke(t *testing.T) {
 		_ = resp.Body.Close()
 		if resp.StatusCode/100 != 2 {
 			t.Fatalf("woodpecker healthz status %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("woodpecker session authenticates as admin", func(t *testing.T) {
+		client := h.WoodpeckerSession()
+		if client == nil {
+			t.Fatal("expected non-nil woodpecker session client")
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.WoodpeckerInternalURL()+"/api/user", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("get /api/user: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode/100 != 2 {
+			t.Fatalf("/api/user status %d body=%s", resp.StatusCode, string(body))
+		}
+		var u struct {
+			Login string `json:"login"`
+			Admin bool   `json:"admin"`
+		}
+		if err := json.Unmarshal(body, &u); err != nil {
+			t.Fatalf("decode /api/user: %v body=%s", err, string(body))
+		}
+		if u.Login != h.GiteaAdminUser() {
+			t.Fatalf("expected login %q, got %q", h.GiteaAdminUser(), u.Login)
+		}
+		if !u.Admin {
+			t.Fatal("expected admin=true on bootstrapped user")
 		}
 	})
 }

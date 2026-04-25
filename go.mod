@@ -12,6 +12,7 @@ require (
 	github.com/testcontainers/testcontainers-go v0.42.0
 	github.com/yaronf/httpsign v0.5.1
 	go.woodpecker-ci.org/woodpecker/v3 v3.13.0
+	golang.org/x/net v0.51.0
 	golang.org/x/oauth2 v0.36.0
 )
 
@@ -126,7 +127,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
