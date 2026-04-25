@@ -1,17 +1,19 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-
-permissions:
-  contents: write
-  packages: write
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version — no leading v (e.g. 0.2.0)"
+        required: true
 
 jobs:
-  release:
+  build-candidate:
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -21,14 +23,44 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        run: echo "image=ghcr.io/${{ github.repository }}:rc-${{ inputs.version }}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ghcr.io/vcheesbrough/woodpecker-openbao-broker:${{ github.ref_name }}
-            ghcr.io/vcheesbrough/woodpecker-openbao-broker:latest
-      - uses: softprops/action-gh-release@v2
+          tags: ${{ steps.meta.outputs.image }}
+
+  e2e:
+    needs: build-candidate
+    uses: ./.github/workflows/e2e.yml
+    with:
+      broker_image: ${{ needs.build-candidate.outputs.image }}
+
+  release:
+    needs: [build-candidate, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Retag candidate as release
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/${{ github.repository }}:v${{ inputs.version }} \
+            -t ghcr.io/${{ github.repository }}:latest \
+            ${{ needs.build-candidate.outputs.image }}
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
           generate_release_notes: true
+          make_latest: true
