@@ -191,6 +191,54 @@ func (h *Harness) dumpPipelineLog(ctx context.Context, repoID, number int64) str
 	return string(body)
 }
 
+// CreateNativeSecret creates a repo-level secret in Woodpecker that applies
+// to all event types. Used by s20 to verify extension secrets take precedence.
+func (h *Harness) CreateNativeSecret(ctx context.Context, repoID int64, name, value string) error {
+	url := fmt.Sprintf("%s/api/repos/%d/secrets", h.woodpecker.internalHTTPURL, repoID)
+	payload := map[string]any{
+		"name":   name,
+		"value":  value,
+		"events": []string{"push", "pull_request", "tag", "manual", "deployment", "cron", "release"},
+	}
+	bodyBytes, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-CSRF-TOKEN", h.woodpecker.csrfToken)
+	resp, err := h.woodpecker.sessionClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("create native secret status %d: %s", resp.StatusCode, snippet(b))
+	}
+	return nil
+}
+
+// DeleteNativeSecret removes a repo-level Woodpecker secret by name.
+func (h *Harness) DeleteNativeSecret(ctx context.Context, repoID int64, name string) error {
+	url := fmt.Sprintf("%s/api/repos/%d/secrets/%s", h.woodpecker.internalHTTPURL, repoID, name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-CSRF-TOKEN", h.woodpecker.csrfToken)
+	resp, err := h.woodpecker.sessionClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+	if resp.StatusCode/100 != 2 && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("delete native secret status %d: %s", resp.StatusCode, snippet(b))
+	}
+	return nil
+}
+
 func isTerminalPipeline(s PipelineState) bool {
 	switch s {
 	case pipelineStatusSuccess, pipelineStatusFailure, pipelineStatusError,
