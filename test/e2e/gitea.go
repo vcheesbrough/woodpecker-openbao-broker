@@ -51,7 +51,11 @@ func (h *Harness) startGitea(ctx context.Context) error {
 			"GITEA__server__OFFLINE_MODE":       "true",
 			"GITEA__security__INSTALL_LOCK":     "true",
 			"GITEA__service__DISABLE_REGISTRATION": "true",
-			"GITEA__log__LEVEL":                 "Warn",
+			"GITEA__log__LEVEL":                    "Warn",
+			// Allow webhooks to private/internal addresses (Docker network).
+			// Gitea 1.17+ defaults to "external" only, which silently drops
+			// webhooks aimed at Docker-internal hostnames like woodpecker-server.
+			"GITEA__webhook__ALLOWED_HOST_LIST": "loopback,private,external",
 		},
 		WaitingFor: wait.ForHTTP("/api/v1/version").
 			WithPort(giteaPort + "/tcp").
@@ -257,7 +261,7 @@ func (h *Harness) OpenPullRequest(headBranch, baseBranch, title string) (int64, 
 
 // DeleteBranch removes a branch from the test repo. Ignores not-found errors.
 func (h *Harness) DeleteBranch(name string) error {
-	_, err := h.gitea.client.DeleteBranch(giteaTestOrg, giteaTestRepo, name)
+	_, _, err := h.gitea.client.DeleteRepoBranch(giteaTestOrg, giteaTestRepo, name)
 	return err
 }
 
