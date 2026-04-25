@@ -7,6 +7,13 @@ fetches them per request and returns them in Woodpecker's secret format.
 [![CI](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml/badge.svg)](https://github.com/vcheesbrough/woodpecker-openbao-broker/actions/workflows/ci.yml)
 [![GHCR](https://img.shields.io/github/v/release/vcheesbrough/woodpecker-openbao-broker?logo=docker&label=ghcr.io&color=blue)](https://github.com/vcheesbrough/woodpecker-openbao-broker/pkgs/container/woodpecker-openbao-broker)
 
+> **Requires Woodpecker v3.14.0 or later** — the first version with the
+> `WOODPECKER_SECRET_EXTENSION_ENDPOINT` flag (added in
+> [woodpecker-ci/woodpecker#6252](https://github.com/woodpecker-ci/woodpecker/pull/6252)).
+> v3.13.0 and earlier cannot consume external secret extensions, so the broker
+> has nothing to talk to. As of writing the latest tag is `v3.14.0-rc.1`; wait
+> for GA or pin the rc.
+
 ---
 
 ## Quickstart
@@ -122,11 +129,14 @@ SECRET_PATH_TEMPLATES=woodpecker/global,woodpecker/repos/{{.Repo.FullName}},wood
 
 ## Compatibility
 
-| Component | Tested |
-|---|---|
-| Woodpecker | v3.x (built against `v3.13.0`) |
-| OpenBao | 2.5.x (CI: `openbao/openbao:2.5.3`) |
-| HashiCorp Vault | untested; expected to work |
+| Component | Required | Notes |
+|---|---|---|
+| Woodpecker | **v3.14.0+** | Earliest version with `WOODPECKER_SECRET_EXTENSION_ENDPOINT`. Currently only `v3.14.0-rc.0` / `v3.14.0-rc.1` are tagged; GA pending. |
+| OpenBao | 2.5.x | CI integration tests run against `openbao/openbao:2.5.3`. |
+| HashiCorp Vault | — | Untested; the wire protocol (KV-v2 + AppRole) is shared, so it's expected to work. |
+
+The broker imports `go.woodpecker-ci.org/woodpecker/v3` model types pinned in
+`go.mod`. Pin tracks GA releases — bumped each time a new Woodpecker GA ships.
 
 ---
 
