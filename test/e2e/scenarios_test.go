@@ -197,6 +197,14 @@ func TestE2E(t *testing.T) {
 	defer h.Teardown(ctx, t)
 	h.Setup(ctx, t)
 
+	h.report.SetEnv("woodpecker_image", cfg.WoodpeckerImage)
+	h.report.SetEnv("agent_image", cfg.AgentImage)
+	h.report.SetEnv("openbao_image", cfg.OpenBaoImage)
+	h.report.SetEnv("gitea_image", cfg.GiteaImage)
+	if cfg.BrokerImage != "" {
+		h.report.SetEnv("broker_image", cfg.BrokerImage)
+	}
+
 	repoID, err := h.RegisterRepoWithWoodpecker(ctx)
 	if err != nil {
 		t.Fatalf("register repo: %v", err)
@@ -204,7 +212,27 @@ func TestE2E(t *testing.T) {
 
 	for _, s := range AllScenarios() {
 		t.Run(s.ID+"_"+s.Title, func(t *testing.T) {
+			start := time.Now()
+			var skipReason string
+			defer func() {
+				status := "pass"
+				if t.Failed() {
+					status = "fail"
+				}
+				if t.Skipped() {
+					status = "skip"
+				}
+				h.report.Append(ScenarioResult{
+					ID: s.ID, Title: s.Title,
+					Status: status, Reason: skipReason,
+					Templates:  s.Templates,
+					StartedAt:  start,
+					DurationMS: time.Since(start).Milliseconds(),
+				})
+			}()
+
 			if s.Disabled {
+				skipReason = "disabled: " + s.Description
 				t.Skipf("disabled (rollout pending): %s", s.Description)
 			}
 			switch s.Trigger {
@@ -212,6 +240,7 @@ func TestE2E(t *testing.T) {
 				TriggerPushWebhook, TriggerPullRequest, TriggerTag:
 				// all trigger types now implemented
 			default:
+				skipReason = "trigger not implemented: " + string(s.Trigger)
 				t.Skipf("trigger %q not yet implemented in driver", s.Trigger)
 			}
 			sep := "\n"
