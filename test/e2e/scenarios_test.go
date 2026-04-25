@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -183,18 +184,38 @@ func TestSmoke(t *testing.T) {
 	})
 }
 
-// TestE2E enumerates the full 20-row matrix from card #118 but is skipped
-// until the Woodpecker/broker bringup layers land in follow-up PRs.
+// TestE2E walks the 20-row scenario matrix from card #118. Scenarios
+// flagged Disabled are skipped — see scenarios.go for the rollout plan
+// that gradually un-flags rows as later layers wire up the trigger
+// types they need.
 func TestE2E(t *testing.T) {
-	t.Skip("scaffolding-only PR: Woodpecker/broker bringup pending. " +
-		"See scenarios.go package doc and the plan file for the layered rollout.")
+	cfg := ConfigFromEnv()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
 
-	scenarios := AllScenarios()
-	for _, s := range scenarios {
+	h := New(t, cfg)
+	defer h.Teardown(ctx, t)
+	h.Setup(ctx, t)
+
+	repoID, err := h.RegisterRepoWithWoodpecker(ctx)
+	if err != nil {
+		t.Fatalf("register repo: %v", err)
+	}
+
+	for _, s := range AllScenarios() {
 		t.Run(s.ID+"_"+s.Title, func(t *testing.T) {
 			if s.Disabled {
-				t.Skipf("disabled in this PR: %s", s.Description)
+				t.Skipf("disabled (rollout pending): %s", s.Description)
 			}
+			if s.Trigger != TriggerPush {
+				t.Skipf("trigger %q not yet implemented in driver", s.Trigger)
+			}
+			templates := strings.Join(s.Templates, "\n")
+			if err := h.RestartBroker(ctx, templates); err != nil {
+				t.Fatalf("restart broker with templates %q: %v", templates, err)
+			}
+			run := realiseScenario(s, h.runID)
+			h.runScenario(ctx, t, repoID, run)
 		})
 	}
 }

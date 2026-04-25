@@ -20,22 +20,24 @@ import (
 )
 
 const (
-	brokerHTTPPort     = "8080"
-	brokerPubkeyMount  = "/etc/woodpecker/pubkey.pem"
+	brokerHTTPPort    = "8080"
+	brokerPubkeyMount = "/etc/woodpecker/pubkey.pem"
 )
 
 type brokerState struct {
-	container       testcontainers.Container
-	internalHTTPURL string
-	hostHTTPURL     string
+	container        testcontainers.Container
+	internalHTTPURL  string
+	hostHTTPURL      string
+	pubkeyPEM        []byte
+	imageTag         string // resolved at first bringup; reused on restart
+	templates        string
+	ledgerRegistered bool
 }
 
-// startBroker brings up the broker-under-test, wired to OpenBao with the
-// AppRole minted in startOpenBao and to Woodpecker via the public key
-// fetched after OAuth bootstrap. The Woodpecker server has already been
-// started with WOODPECKER_SECRET_EXTENSION_ENDPOINT pointing at the
-// broker DNS alias, so once the broker is up secret resolution flows
-// end-to-end.
+// startBroker brings up the broker-under-test for the first time, wired
+// to OpenBao with the AppRole minted in startOpenBao and to Woodpecker
+// via the public key fetched after OAuth bootstrap. Subsequent calls
+// during a run should use RestartBroker to swap SECRET_PATH_TEMPLATES.
 func (h *Harness) startBroker(ctx context.Context) error {
 	if h.bao == nil {
 		return errors.New("openbao must be running before broker")
@@ -49,8 +51,48 @@ func (h *Harness) startBroker(ctx context.Context) error {
 		return fmt.Errorf("fetch woodpecker pubkey: %w", err)
 	}
 
+	imageTag := h.cfg.BrokerImage
+	if imageTag == "" {
+		// The repo's Dockerfile uses BuildKit-only directives — see
+		// reference_e2e_buildx_required memory. Preflight-build via
+		// `docker buildx build` on the host so testcontainers just pulls
+		// the resulting tag.
+		imageTag, err = buildBrokerImageOnHost(ctx, h.runID)
+		if err != nil {
+			return fmt.Errorf("preflight build broker image: %w", err)
+		}
+	}
+
+	h.broker = &brokerState{
+		pubkeyPEM: pubkeyPEM,
+		imageTag:  imageTag,
+	}
+	return h.spawnBroker(ctx, "")
+}
+
+// RestartBroker terminates the running broker container and starts a new
+// one with the given SECRET_PATH_TEMPLATES. Used by the scenario driver
+// to switch broker config between scenario groups.
+func (h *Harness) RestartBroker(ctx context.Context, templates string) error {
+	if h.broker == nil {
+		return errors.New("broker has not been started yet")
+	}
+	if h.broker.templates == templates && h.broker.container != nil {
+		return nil
+	}
+	if h.broker.container != nil {
+		if err := h.broker.container.Terminate(ctx); err != nil {
+			return fmt.Errorf("terminate previous broker: %w", err)
+		}
+		h.broker.container = nil
+	}
+	return h.spawnBroker(ctx, templates)
+}
+
+func (h *Harness) spawnBroker(ctx context.Context, templates string) error {
 	req := testcontainers.ContainerRequest{
-		Name:           "e2e-broker-" + h.runID,
+		Image:          h.broker.imageTag,
+		Name:           fmt.Sprintf("e2e-broker-%s-%d", h.runID, time.Now().UnixNano()),
 		Networks:       []string{h.networkName},
 		NetworkAliases: map[string][]string{h.networkName: {brokerNetAlias}},
 		ExposedPorts:   []string{brokerHTTPPort + "/tcp"},
@@ -60,12 +102,12 @@ func (h *Harness) startBroker(ctx context.Context) error {
 			"OPENBAO_ROLE_ID":            h.bao.roleID,
 			"OPENBAO_SECRET_ID":          h.bao.secretID,
 			"OPENBAO_KV_MOUNT":           openBaoKVMount,
-			"SECRET_PATH_TEMPLATES":      "",
+			"SECRET_PATH_TEMPLATES":      templates,
 			"LISTEN_ADDR":                ":" + brokerHTTPPort,
 		},
 		Files: []testcontainers.ContainerFile{
 			{
-				Reader:            bytes.NewReader(pubkeyPEM),
+				Reader:            bytes.NewReader(h.broker.pubkeyPEM),
 				ContainerFilePath: brokerPubkeyMount,
 				FileMode:          0o444,
 			},
@@ -75,34 +117,17 @@ func (h *Harness) startBroker(ctx context.Context) error {
 			WithStartupTimeout(60 * time.Second),
 	}
 
-	if h.cfg.BrokerImage != "" {
-		req.Image = h.cfg.BrokerImage
-	} else {
-		// The repo's Dockerfile uses BuildKit-only directives
-		// (`# syntax=docker/dockerfile:1`, `--platform=$BUILDPLATFORM`)
-		// that the docker engine's `/build` endpoint can't parse cleanly
-		// when invoked via the moby client (BUILDPLATFORM resolves to
-		// empty and BuildKit's frontend rejects it). Preflight-build the
-		// image with the host's `docker build` command (which behaves
-		// the same way the project's CI does) and point testcontainers
-		// at the resulting tag.
-		tag, err := buildBrokerImageOnHost(ctx, h.runID)
-		if err != nil {
-			return fmt.Errorf("preflight build broker image: %w", err)
-		}
-		req.Image = tag
-	}
-
 	c, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
 		Started:          true,
 	})
-	if c != nil {
-		h.ledger.Add(NewFuncResource("broker container", func(ctx context.Context) error {
-			return c.Terminate(ctx)
-		}))
-	}
 	if err != nil {
+		// On wait-timeout testcontainers leaves the container running; if
+		// we can still get a handle, kill it so the network teardown
+		// doesn't trip on a dangling endpoint.
+		if c != nil {
+			_ = c.Terminate(ctx)
+		}
 		return err
 	}
 
@@ -110,10 +135,21 @@ func (h *Harness) startBroker(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	h.broker = &brokerState{
-		container:       c,
-		internalHTTPURL: fmt.Sprintf("http://%s:%s", brokerNetAlias, brokerHTTPPort),
-		hostHTTPURL:     hostHTTPURL,
+	h.broker.container = c
+	h.broker.internalHTTPURL = fmt.Sprintf("http://%s:%s", brokerNetAlias, brokerHTTPPort)
+	h.broker.hostHTTPURL = hostHTTPURL
+	h.broker.templates = templates
+	if !h.broker.ledgerRegistered {
+		// One ledger entry that always points at the *current* broker
+		// container — restarts swap the pointer, so cleanup terminates
+		// only what's actually still running.
+		h.ledger.Add(NewFuncResource("broker container", func(ctx context.Context) error {
+			if h.broker.container == nil {
+				return nil
+			}
+			return h.broker.container.Terminate(ctx)
+		}))
+		h.broker.ledgerRegistered = true
 	}
 	return nil
 }
@@ -161,3 +197,16 @@ func fetchWoodpeckerPubkey(ctx context.Context, client *http.Client, wpBase stri
 // BrokerHostURL is the host-reachable broker URL — useful for harness-side
 // /health checks.
 func (h *Harness) BrokerHostURL() string { return h.broker.hostHTTPURL }
+
+func (h *Harness) dumpBrokerLog(ctx context.Context) string {
+	if h.broker == nil || h.broker.container == nil {
+		return "(no broker)"
+	}
+	rc, err := h.broker.container.Logs(ctx)
+	if err != nil {
+		return fmt.Sprintf("(logs: %v)", err)
+	}
+	defer func() { _ = rc.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(rc, 32<<10))
+	return string(body)
+}

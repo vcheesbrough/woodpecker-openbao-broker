@@ -174,6 +174,23 @@ func (h *Harness) fetchPipelineStatus(ctx context.Context, repoID, number int64)
 	return PipelineState(p.Status), nil
 }
 
+// dumpPipelineLog returns a best-effort string with the pipeline's
+// workflow status and step logs. Used for failure diagnostics.
+func (h *Harness) dumpPipelineLog(ctx context.Context, repoID, number int64) string {
+	url := fmt.Sprintf("%s/api/repos/%d/pipelines/%d", h.woodpecker.internalHTTPURL, repoID, number)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Sprintf("(build req: %v)", err)
+	}
+	resp, err := h.woodpecker.sessionClient.Do(req)
+	if err != nil {
+		return fmt.Sprintf("(get pipeline: %v)", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return string(body)
+}
+
 func isTerminalPipeline(s PipelineState) bool {
 	switch s {
 	case pipelineStatusSuccess, pipelineStatusFailure, pipelineStatusError,
